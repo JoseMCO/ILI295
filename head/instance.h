@@ -2,25 +2,23 @@
 #define INSTANCE_H
 
 #include <iostream>
+#include <fstream>
 #include <vector>
-#include <algorithm>
 #include <random>
 
 #include "nurse.h"
-#include "day_shift.h"
+#include "shift.h"
 
 class Instance {
 public:
-  int id;
-  int shiftsCount;
   int score;
   int iterations;
 
-  std::vector< std::vector<int> > nurses;
+  std::vector<Nurse> nurses;
 
-  Instance(std::vector<Day> days, int nurses);
-  Instance(std::vector<Nurse> nurses, int shifts, int score, int iterations);
-  void print();
+  Instance(std::vector<Shift> shifts, std::vector<Nurse> newNurses);
+  Instance(std::vector<Nurse> nurses, int score, int iterations);
+  void print(bool debug, bool toFile, std::ofstream* file);
 };
 
 #endif

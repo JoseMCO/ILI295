@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "nurse.h"
-#include "day_shift.h"
 
 class Shift;
 
@@ -14,13 +13,9 @@ public:
   int shiftsCount;
 
   std::vector<int> preferences;
-  std::vector<Shift*> shifts;
+  std::vector<int> shifts;
 
-  Nurse(int id);
+  Nurse(int id, int shifts);
   void setPreferences(std::vector<int> pref);
-  int penalizeShiftPreference();
-  int penalizeConsecutiveSameShifts();
-  int penalizeConsecutiveShifts(int maxConShifts);
-  int penalizeFreeDays(int minAss, int maxAss);
 };
 #endif

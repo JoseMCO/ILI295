@@ -12,9 +12,8 @@
 #include <cmath>
 #include <iostream>
 #include <fstream>
-
 #include "scheduler.h"
-#include "day_shift.h"
+#include "shift.h"
 #include "nurse.h"
 #include "instance.h"
 
@@ -31,20 +30,26 @@ public:
   int maxConShifts;
   int currentScore;
 
-  std::vector<Day> days;
   std::vector<Shift> shifts;
   std::vector<Nurse> nurses;
   std::vector<Instance> instances;
 
-  Scheduler(bool debug);
+  std::ofstream* file;
+
+  Scheduler(bool debug, std::ofstream* file);
   void log(std::string text);
   void log(std::string text, bool end);
   void log(int number);
   void log(int number, bool end);
   void printShiftsCoverage();
   void printNursesPreferences();
-  void printCurrentInstance();
-  int  calculatePenalization();
+  void printCurrentInstance(bool toFile);
+  std::vector<int> penalizeShiftPreference();
+  std::vector<int> penalizeConsecutiveSameShifts();
+  std::vector<int> penalizeConsecutiveShifts();
+  std::vector<int> penalizeShiftsAssignments();
+  std::vector<int> penalizeFreeDays();
+  int  calculatePenalization(bool toFile);
   bool validateInstance();
   bool initWithFiles(std::string format, std::string instance);
   void randomInstance();

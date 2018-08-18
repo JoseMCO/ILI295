@@ -1,8 +1,9 @@
 #include "scheduler.h"
 
-Scheduler::Scheduler(bool debug) {
+Scheduler::Scheduler(bool debug, std::ofstream *file) {
   this->debug = debug;
-  this->currentScore = 1;
+  this->currentScore = 0;
+  this->file = file;
 }
 
 void Scheduler::log(std::string text) {
@@ -29,77 +30,199 @@ void Scheduler::log(int number, bool last) {
   }
 }
 
-void Scheduler::printShiftsCoverage() {
-  if(!debug) return;
-  log("", true);
-  for (int i = 0; i < days.size(); ++i) {
-    Day d = days.at(i);
-    for (int j = 0; j < d.shifts.size(); ++j) {
-      log(d.shifts.at(j)->coverage);
+void Scheduler::printCurrentInstance(bool toFile) {
+  instances.at(instances.size()-1).print(debug, toFile, file);
+}
+
+std::vector<int> Scheduler::penalizeShiftPreference() {
+  std::vector<int> penalizations = std::vector<int>(nursesCount,0);
+  int penalization = 10;
+  for (int n = 0; n < nurses.size(); ++n) {
+    std::vector<int> nShifts = nurses.at(n).shifts;
+    for (int s = 0; s < shiftsCount; ++s) {
+      if (nShifts.at(s) == 1) {
+        penalizations.at(n) += (4-nurses.at(n).preferences.at(s))*penalization;
+      }
     }
-    log("", true);
   }
+  log("penalizeShiftPreference",1);
+  for (int i = 0; i < penalizations.size(); ++i) {
+    log(penalizations.at(i));
+  }
+  log("\n",1);
+  return penalizations;
 }
 
-void Scheduler::printNursesPreferences() {
-  if(!debug) return;
-  log("", true);
-  for (int i = 0; i < nurses.size(); ++i) {
-    Nurse n = nurses.at(i);
-    for (int j = 0; j < n.preferences.size(); ++j) {
-      log(n.preferences.at(j));
+std::vector<int> Scheduler::penalizeConsecutiveSameShifts() {
+  std::vector<int> penalizations = std::vector<int>(nursesCount,0);
+  int penalization = 15;
+  for (int n = 0; n < nurses.size(); ++n) {
+    std::vector<int> reps = std::vector<int>(shiftsTypes,0);
+    std::vector<int> nShifts = nurses.at(n).shifts;
+    for (int st = 0; st < shiftsTypes; ++st) {
+      int shiftMin = shifts.at(st).minConsecutive;
+      int shiftMax = shifts.at(st).maxConsecutive;
+      int reps = 0, pens = 0;
+      for (int d = 0; d < daysCount; ++d) {
+        if (nShifts.at(st+(d*shiftsTypes)) == 1) reps++;
+        if (reps > 0 && (nShifts.at(st+(d*shiftsTypes)) == 0 || d+1 == daysCount)) {
+          if(reps > shiftMax) {
+            pens += (reps-shiftMax)*penalization;
+          }
+          else if(reps < shiftMin) {
+            pens += (shiftMin-reps)*penalization;
+          }
+          reps = 0;
+        }
+      }
+      penalizations.at(n) += pens;
     }
-    log("", true);
   }
+  log("penalizeConsecutiveSameShifts",1);
+  for (int i = 0; i < penalizations.size(); ++i) {
+    log(penalizations.at(i));
+  }
+  log("\n",1);
+  return penalizations;
 }
 
-void Scheduler::printCurrentInstance() {
-  if(!debug) return;
-  instances.at(instances.size()-1).print();
+std::vector<int> Scheduler::penalizeConsecutiveShifts() {
+  std::vector<int> penalizations = std::vector<int>(nursesCount,0);
+  int penalization = 20;
+  for (int n = 0; n < nurses.size(); ++n) {
+    int reps = 0;
+    std::vector<int> nShifts = nurses.at(n).shifts;
+    for (int s = 0; s < shiftsCount; ++s) {
+      if (nShifts.at(s) == 1) reps++;
+      if (reps > 0 && (nShifts.at(s) == 0 || s+1 == shiftsCount)) {
+        if(reps > maxConShifts) {
+          penalizations.at(n) += (reps-maxConShifts)*penalization;
+        }
+        else if(reps < minConShifts) {
+          penalizations.at(n) += (minConShifts-reps)*penalization;
+        }
+        reps = 0;
+      }
+    }
+  }
+  log("penalizeConsecutiveShifts",1);
+  for (int i = 0; i < penalizations.size(); ++i) {
+    log(penalizations.at(i));
+  }
+  log("\n",1);
+  return penalizations;
 }
 
-int Scheduler::calculatePenalization() {
+std::vector<int> Scheduler::penalizeShiftsAssignments() {
+  std::vector<int> penalizations = std::vector<int>(shiftsCount,0);
+  int penalization = 25;
+  for (int i = 0; i < shiftsCount; ++i) {
+    int count = shifts.at(i).nursesCount;
+    if (count > shifts.at(i).maxAssignments){
+      penalizations.at(i) = (count-shifts.at(i).maxAssignments)*penalization;
+    }
+    else if (shifts.at(i).minAssignments > count){
+      penalizations.at(i) = (shifts.at(i).minAssignments-count)*penalization;
+    }
+  }
+  log("penalizeShiftsAssignments",1);
+  for (int i = 0; i < penalizations.size(); ++i) {
+    log(penalizations.at(i));
+  }
+  log("\n",1);
+  return penalizations;
+}
+
+std::vector<int> Scheduler::penalizeFreeDays() {
+  std::vector<int> penalizations = std::vector<int>(nursesCount,0);
+  int penalization = 1;
+  for (int n = 0; n < nurses.size(); ++n) {
+    int reps = 0;
+    std::vector<int> nShifts = nurses.at(n).shifts;
+    for (int s = 0; s < shiftsCount; ++s) {
+      if (nShifts.at(s) == 1) reps++;
+    }
+    if (reps > maxAssignments) {
+      penalizations.at(n) = (reps-maxAssignments)*penalization;
+    }
+    else if(minAssignments > reps) {
+      penalizations.at(n) = (minAssignments-reps)*penalization;
+    }
+  }
+  log("penalizeFreeDays",1);
+  for (int i = 0; i < penalizations.size(); ++i) {
+    log(penalizations.at(i));
+  }
+  log("\n",1);
+  return penalizations;
+}
+
+int Scheduler::calculatePenalization(bool toFile) {
   std::vector< std::vector<int> > pen = std::vector< std::vector<int> >(nursesCount, std::vector<int>(2, 0));
-  int totalPenalization = 0;
-  int totalPens = 0;
-  for (int i = 0; i < nurses.size(); ++i) {
-    int p0 = nurses.at(i).penalizeShiftPreference();
-    int p1 = nurses.at(i).penalizeConsecutiveSameShifts();
-    int p2 = nurses.at(i).penalizeConsecutiveShifts(maxConShifts);
-    int p3 = nurses.at(i).penalizeFreeDays(minAssignments, maxAssignments);
-    pen.at(i).at(0) = p0+p1+p2+p3;
-    pen.at(i).at(1) = (p0>0)+(p1>0)+(p2>0)+(p3>0);
-    totalPenalization += pen.at(i).at(0);
-    totalPens += pen.at(i).at(1);
+  std::vector<int> p1 = penalizeShiftPreference();
+  std::vector<int> p2 = penalizeConsecutiveSameShifts();
+  std::vector<int> p3 = penalizeConsecutiveShifts();
+  std::vector<int> p4 = penalizeFreeDays();
+  std::vector<int> p5 = penalizeShiftsAssignments();
+  int pensCount = 0, pens = 0;
+  std::vector<int> pensByNurse = std::vector<int>(nursesCount, 0);
+  std::vector<int> pensCountByNurse = std::vector<int>(nursesCount, 0);
+  for (int n = 0; n < nursesCount; ++n) {
+    if (p1.at(n) > 1) {
+      pensCountByNurse.at(n)++;
+      pensByNurse.at(n)+=p1.at(n);
+    }
+    if (p2.at(n) > 1) {
+      pensCountByNurse.at(n)++;
+      pensByNurse.at(n)+=p2.at(n);
+    }
+    if (p3.at(n) > 1) {
+      pensCountByNurse.at(n)++;
+      pensByNurse.at(n)+=p3.at(n);
+    }
+    if (p4.at(n) > 1) {
+      pensCountByNurse.at(n)++;
+      pensByNurse.at(n)+=p4.at(n);
+    }
+    pens+=pensByNurse.at(n);
+    pensCount+=pensCountByNurse.at(n);
   }
-  // for (int i = 0; i < shifts.size(); ++i) {
-  //   totalPenalization += shifts.at(i).penalizeCoverage();
-  // }
-  if (debug) {
-    log(totalPens);
-    for (int i = 0; i < pen.size(); ++i) {
-      log(pen.at(i).at(1));
+  for (int i = 0; i < p5.size(); ++i) {
+    pens+=p5.at(i);
+  }
+
+  if (debug || toFile) {
+    log(pensCount);
+    if (toFile) *file << pensCount << " ";
+    for (int i = 0; i < nursesCount; ++i) {
+      log(pensCountByNurse.at(i));
+      if (toFile) *file << pensCountByNurse.at(i) << " ";
     }
     log("\n");
-    log(totalPenalization);
-    for (int i = 0; i < pen.size(); ++i) {
-      log(pen.at(i).at(0));
+    log(pens);
+    if (toFile) *file << "\n" << pens << " ";
+    for (int i = 0; i < nursesCount; ++i) {
+      log(pensByNurse.at(i));
+      if (toFile) *file << pensByNurse.at(i) << " ";
     }
     log("", true);
-    log(-totalPenalization);
-    for (int i = 0; i < pen.size(); ++i) {
-      log(-pen.at(i).at(0));
+    log(-pens);
+    if (toFile) *file << "\n" << -pens << " ";
+    for (int i = 0; i < nursesCount; ++i) {
+      log(-pensByNurse.at(i));
+      if (toFile) *file << -pensByNurse.at(i) << " ";
     }
     log("", true);
+    if (toFile) *file << "\n";
   }
   log("", true);
-  return totalPenalization;
+  if (toFile) *file << "\n";
+  return pens;
 }
 
 bool Scheduler::validateInstance() {
-  for (int i = 0; i < shifts.size(); ++i)
-  {
-    if (!shifts.at(i).validCoverage()) {
+  for (int s = 0; s < shiftsCount; ++s) {
+    if (!shifts.at(s).validate()) {
       return false;
     }
   }
@@ -107,63 +230,37 @@ bool Scheduler::validateInstance() {
 }
 
 void Scheduler::assignNurseToShift(int nurse, int shift) {
-  for (int i = 0; i < shifts.at(shift).nursesCount; ++i){
-    if (shifts.at(shift).nurses.at(i)->id == nurse) {
-      return;
-    }
-  }
-  for (int i = 0; i < nurses.at(nurse).shiftsCount; ++i){
-    if (nurses.at(nurse).shifts.at(i)->id == shift) {
-      return;
-    }
-  }
-  shifts.at(shift).nurses.push_back(&nurses.at(nurse));
-  shifts.at(shift).nursesCount++;
-
-  nurses.at(nurse).shifts.push_back(&shifts.at(shift));
+  if (nurses.at(nurse).shifts.at(shift) == 1) return;
+  nurses.at(nurse).shifts.at(shift) = 1;
   nurses.at(nurse).shiftsCount++;
+  shifts.at(shift).nursesCount++;
 }
 
 void Scheduler::removeNurseFromShift(int nurse, int shift) {
-  for (int i = 0; i < shifts.at(shift).nursesCount; ++i){
-    if (shifts.at(shift).nurses.at(i)->id == nurse) {
-      shifts.at(shift).nurses.erase(shifts.at(shift).nurses.begin() + i);
-      shifts.at(shift).nursesCount--;
-      break;
-    }
-  }
-  for (int i = 0; i < nurses.at(nurse).shiftsCount; ++i){
-    if (nurses.at(nurse).shifts.at(i)->id == shift) {
-      nurses.at(nurse).shifts.erase(nurses.at(nurse).shifts.begin() + i);
-      nurses.at(nurse).shiftsCount--;
-      break;
-    }
-  }
+  if (nurses.at(nurse).shifts.at(shift) == 0) return;
+  nurses.at(nurse).shifts.at(shift) = 0;
+  nurses.at(nurse).shiftsCount--;
+  shifts.at(shift).nursesCount--;
 }
 
 void Scheduler::toggleShift(int nurse, int shift) {
-  bool found = false;
-  for (int i = 0; i < shifts.at(shift).nurses.size(); ++i) {
-    if (shifts.at(shift).nurses.at(i)->id == nurse) {
-      found = true;
-      break;
-    }
-  }
-  if (found){
+  if (nurses.at(nurse).shifts.at(shift) == 1) {
     removeNurseFromShift(nurse, shift);
-  } else {
+  }
+  else {
     assignNurseToShift(nurse, shift);
   }
 }
 
 void Scheduler::assignNursesFromInstance(Instance instance) {
-  for (int i = 0; i < instance.nurses.size(); ++i) {
-    for (int j = 0; j < instance.nurses.at(i).size(); ++j) {
-      if (instance.nurses.at(i).at(j) == 1){
-        assignNurseToShift(i,j);
-      }
-      else {
-        removeNurseFromShift(i,j);
+  nurses = instance.nurses;
+  for (int i = 0; i < shifts.size(); ++i) {
+    shifts.at(i).nursesCount = 0;
+  }
+  for (int n = 0; n < nurses.size(); ++n) {
+    for (int s = 0; s < nurses.at(n).shifts.size(); ++s) {
+      if (nurses.at(n).shifts.at(s) == 1) {
+        shifts.at(s).nursesCount++;
       }
     }
   }
@@ -175,8 +272,8 @@ void Scheduler::assignNursesFromInstance() {
 }
 
 void Scheduler::assignInstanceFromNurses(int iterations) {
-  int score = calculatePenalization();
-  instances.at(instances.size()-1) = Instance(nurses, shiftsCount, score, iterations);
+  int score = calculatePenalization(false);
+  instances.at(instances.size()-1) = Instance(nurses, score, iterations);
 }
 
 bool Scheduler::initWithFiles(std::string format, std::string instance) {
@@ -197,22 +294,14 @@ bool Scheduler::initWithFiles(std::string format, std::string instance) {
   formatFile >> this->minConShifts >> this->maxConShifts;
   this->shiftsCount = daysCount*shiftsTypes;
 
-  log("creating days", true);
-  days = std::vector<Day>(daysCount, Day(0, 0));
-  for(int j = 0; j < daysCount; j++){
-    days.at(j) = Day(j, shiftsTypes);
-    days.at(j).shifts = std::vector<Shift*>(shiftsTypes, NULL);
-  }
-
   log("creating shifts", true);
-  shifts = std::vector<Shift>(shiftsCount, Shift(0,0,0,0,0,0,&days.at(0)));
+  shifts = std::vector<Shift>(shiftsCount, Shift(0,0,0,0,0,0));
   for(int i = 0; i < shiftsTypes; i++){
     int p1, p2, p3, p4;
     formatFile >> p1 >> p2 >> p3 >> p4;
     for(int j = 0; j < daysCount; j++){
       int id = j*shiftsTypes + i;
-      shifts.at(id) = Shift(id, i+1, p1, p2, p3, p4, &days.at(j));
-      days.at(j).shifts.at(i) = &(shifts.at(id));
+      shifts.at(id) = Shift(id, i, p1, p2, p3, p4);
     }
   }
   formatFile.close();
@@ -231,62 +320,67 @@ bool Scheduler::initWithFiles(std::string format, std::string instance) {
   }
 
   log("setting shifts coverage", true);
-  for(int i = 0; i < days.size(); i++) {
-    for(int j = 0; j < days.at(i).shifts.size(); j++) {
-      int v;
-      instanceFile >> v;
-      days.at(i).shifts.at(j)->setCoverage(v);
-    }
+  for(int j = 0; j < shiftsCount; j++) {
+    int v;
+    instanceFile >> v;
+    shifts.at(j).setCoverage(v);
+    log(v);
   }
+  log("",1);
 
   log("creating nurses", true);
   for (int k = 0; k < nursesCount; ++k) {
-    Nurse nurse = Nurse(k);
+    Nurse nurse = Nurse(k, shiftsCount);
     nurses.push_back(nurse);
   }
 
   log("setting nurses preferences", true);
   for (int k = 0; k < nursesCount; ++k) {
     std::vector<int> pref = std::vector<int>();
-    for(int i = 0; i < daysCount; i++) {
-      for(int j = 0; j < shiftsTypes; j++) {
-        int v;
-        instanceFile >> v;
-        pref.push_back(v);
-      }
+    int v;
+    for(int i = 0; i < shiftsCount; i++) {
+      instanceFile >> v;
+      pref.push_back(v);
+      log(v);
     }
     nurses.at(k).setPreferences(pref);
+    log("",1);
   }
+  log("",1);
   instanceFile.close();
   return true;
 }
 
 void Scheduler::randomInstance() {
-  instances.push_back(Instance(days, nursesCount));
+  instances.push_back(Instance(shifts, nurses));
   assignNursesFromInstance();
 }
 
 void Scheduler::localSearch(int iterations, int retries) {
-  // std::cout << nursesCount << std::endl << std::endl;
-  // std::cout << "score\titer\trel score\trel iter" << std::endl;
+  log("Start!",1);
   for (int i = 0; i < retries; ++i) {
+    log("Try n:");log(i+1,1);
     randomInstance();
     int j = 0;
-    currentScore = calculatePenalization();
+    // debug = false;
+    currentScore = calculatePenalization(false);
+    // debug = true;
     bool improvent = true;
     for (j = 0; j < iterations; ++j) {
       bool improve = false;
       int fN = (rand() % nursesCount);
       for (int n = fN; n < nursesCount+fN; ++n) {
         int k = n;
-        if (k>=nursesCount) k=k-nursesCount;
+        if (k >= nursesCount) k=k-nursesCount;
         int fS = (rand() % shiftsCount);
         for (int s = fS; s < shiftsCount+fS; ++s) {
           int l = s;
-          if (l>=shiftsCount) l=l-shiftsCount;
+          if (l >= shiftsCount) l=l-shiftsCount;
           toggleShift(k, l);
           if(validateInstance()) {
-            int newScore = calculatePenalization();
+            // debug = false;
+            int newScore = calculatePenalization(false);
+            // debug = true;
             if (currentScore > newScore){
               currentScore = newScore;
               improve = true;
@@ -300,20 +394,26 @@ void Scheduler::localSearch(int iterations, int retries) {
       }
       if(!improve) break;
     }
-    std::cout << currentScore << "\t" << j << "\t";
-    // std::cout << ((float)currentScore)/nursesCount << "\t" << ((float)j)/nursesCount << "\t";
-    // std::cout << (((float)currentScore)/nursesCount)/(((float)j)/nursesCount) << std::endl;
-    std::cout << std::endl;
+    std::cout << "try " << i << " score: " << currentScore << std::endl;
+    if(!validateInstance()) log("Invalid!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",1);
     assignInstanceFromNurses(j);
+    printCurrentInstance(false);
   }
   int bestInstance = instances.size()-1;
+  int bestScore = currentScore;
+  log("",1);
   for (int i = 0; i < instances.size(); ++i) {
-    if (instances.at(i).score <= currentScore) {
-      currentScore = instances.at(i).score;
+    log("Instance: ");log(i);log("score: ");log(instances.at(i).score,1);
+    if (instances.at(i).score <= bestScore) {
+      bestScore = instances.at(i).score;
       bestInstance = i;
+      log("Instance: ");log(i);log("best yet!",1);
     }
   }
   assignNursesFromInstance(instances.at(bestInstance));
-  printCurrentInstance();
-  calculatePenalization();
+  assignInstanceFromNurses(0);
+  printCurrentInstance(true);
+  calculatePenalization(true);
+  if(validateInstance()) log("valida!",1);
+  log("FIN",1);
 }
