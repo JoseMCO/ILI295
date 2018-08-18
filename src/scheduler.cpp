@@ -361,6 +361,10 @@ void Scheduler::localSearch(int iterations, int retries) {
   for (int i = 0; i < retries; ++i) {
     log("Try n:");log(i+1,1);
     randomInstance();
+    if(!validateInstance()){
+      log("Invalid!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",1);
+      return;
+    } 
     int j = 0;
     // debug = false;
     currentScore = calculatePenalization(false);
@@ -394,8 +398,14 @@ void Scheduler::localSearch(int iterations, int retries) {
       }
       if(!improve) break;
     }
-    std::cout << "try " << i << " score: " << currentScore << std::endl;
-    if(!validateInstance()) log("Invalid!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",1);
+    std::cout << "try " << i << " score: " << currentScore;
+    // std::cout << "try " << i << " score: " << currentScore << std::endl;
+    // std::cout << j << "\t" << currentScore;
+    // std::cout << currentScore;
+    if(!validateInstance()){
+      log("Invalid!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",1);
+      return;
+    } 
     assignInstanceFromNurses(j);
     printCurrentInstance(false);
   }

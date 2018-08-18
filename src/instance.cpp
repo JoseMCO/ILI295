@@ -14,7 +14,7 @@ Instance::Instance(std::vector<Shift> shifts, std::vector<Nurse> newNurses) {
     srand(seed);
 
     int c = shifts.at(j).coverage;
-    // c = c + (rand() % (nursesCount-c));
+    // c = c + (rand() % (nurses.size()-c));
     std::vector<int> coverage = std::vector<int>();
     for (int k = 0; k < c; ++k){
       coverage.push_back(1);
